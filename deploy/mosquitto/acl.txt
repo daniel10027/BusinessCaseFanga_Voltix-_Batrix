@@ -1,0 +1,8 @@
+# Exemple d'ACL pour mosquitto.prod.conf (brief, 5.6). Chaque batterie
+# n'écrit que sur son propre topic de télémétrie ; le service d'ingestion
+# lit tout le namespace Batrix.
+
+pattern write batrix/v1/%u/telemetry
+
+user fanga-ingest
+topic read batrix/#

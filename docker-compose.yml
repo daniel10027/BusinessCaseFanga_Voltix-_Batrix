@@ -1,0 +1,68 @@
+name: fanga-ingest
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: fanga
+      POSTGRES_PASSWORD: fanga
+      POSTGRES_DB: fanga_ingest
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fanga"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./deploy/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  migrate:
+    build: .
+    command: ["alembic", "-c", "src/fanga_ingest/adapters/persistence/alembic.ini", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://fanga:fanga@postgres:5432/fanga_ingest
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://fanga:fanga@postgres:5432/fanga_ingest
+      VOLTIX_TCP_HOST: 0.0.0.0
+      VOLTIX_TCP_PORT: 9000
+      VOLTIX_ALLOWED_CABINET_IDS: VTX-CAB-0042
+      VOLTIX_READ_TIMEOUT_SECONDS: 180
+      VOLTIX_MAX_INVALID_FRAMES: 10
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_CLIENT_ID: fanga-ingest-batrix
+      MQTT_TOPIC_FILTER: batrix/v1/+/telemetry
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      CABINET_OFFLINE_AFTER_SECONDS: 180
+      CABINET_SWEEP_INTERVAL_SECONDS: 30
+      NESTJS_WEBHOOK_URL: http://host.docker.internal:3000/webhooks/fanga
+      OUTBOX_HMAC_SECRET: change-me-demo-secret
+      OUTBOX_RELAY_INTERVAL_SECONDS: 5
+      INVENTORY_HMAC_SECRET: change-me-demo-secret
+      REPLAY_START: ${REPLAY_START:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mosquitto:
+        condition: service_started
+
+volumes:
+  postgres_data:
