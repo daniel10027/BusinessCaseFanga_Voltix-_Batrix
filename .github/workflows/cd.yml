@@ -42,9 +42,13 @@ jobs:
       - name: Déterminer le(s) tag(s) de l'image
         id: image_tags
         run: |
-          # Une référence d'image Docker doit être en minuscules : le nom du
-          # dépôt GitHub, lui, ne l'est pas forcément (ici "BusinessCase...").
-          IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          # Une référence d'image Docker doit être en minuscules, sans
+          # séquences comme "-_" : le nom du dépôt GitHub ne respecte ni
+          # l'un ni l'autre ("BusinessCase...Voltix-_Batrix"). On construit
+          # donc l'image à partir du seul propriétaire (déjà propre) et d'un
+          # nom d'application fixe, plutôt que du nom complet du dépôt.
+          OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${OWNER}/fanga-ingest"
           if [ "${{ github.ref_name }}" = "production" ]; then
             VERSION=$(git describe --tags --always)
             echo "tags=${IMAGE}:${VERSION},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
