@@ -14,6 +14,7 @@ from datetime import datetime
 import aiomqtt
 from pydantic import ValidationError
 
+from fanga_ingest.adapters.api.metrics import BATRIX_MESSAGES_TOTAL
 from fanga_ingest.adapters.vendors.batrix.schema import TelemetryMessage
 from fanga_ingest.adapters.vendors.batrix.translate import translate_telemetry
 from fanga_ingest.domain.observations import TelemetryObserved
@@ -71,6 +72,7 @@ class BatrixConsumer:
         except (json.JSONDecodeError, ValidationError, TypeError):
             logger.warning("message Batrix invalide reçu sur %s", topic)
             self.rejected_count += 1
+            BATRIX_MESSAGES_TOTAL.labels(result="rejected").inc()
             return
 
         if message.sn != serial_from_topic:
@@ -78,10 +80,12 @@ class BatrixConsumer:
                 "numéro de série du topic (%s) différent du message (%s)", topic, message.sn
             )
             self.rejected_count += 1
+            BATRIX_MESSAGES_TOTAL.labels(result="rejected").inc()
             return
 
         observation = translate_telemetry(message, self._now())
         await self._handle_telemetry(observation)
+        BATRIX_MESSAGES_TOTAL.labels(result="accepted").inc()
 
 
 def _extract_serial(topic: str) -> str | None:

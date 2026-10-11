@@ -18,6 +18,7 @@ Règles (brief, section 5.4) :
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
+from fanga_ingest.adapters.api.metrics import VOLTIX_CRC_ERRORS_TOTAL, VOLTIX_FRAMES_TOTAL
 from fanga_ingest.adapters.vendors.voltix.messages import (
     HeartbeatMessage,
     LoginMessage,
@@ -80,6 +81,7 @@ class VoltixSession:
             return self._handle_login(raw_frame)
 
         if not raw_frame.crc_ok:
+            VOLTIX_CRC_ERRORS_TOTAL.inc()
             return self._reject_frame()
 
         try:
@@ -95,9 +97,11 @@ class VoltixSession:
             # Frontière de la session : une trame syntaxiquement valide dont le
             # traitement échoue (écriture, etc.) ne doit pas faire tomber la
             # connexion ni compter comme trame invalide (5.4).
+            VOLTIX_FRAMES_TOTAL.labels(result="error").inc()
             return build_ack(ACK_ERROR)
 
         self._invalid_frame_count = 0
+        VOLTIX_FRAMES_TOTAL.labels(result="ok").inc()
         return build_ack(ACK_OK)
 
     def _translate(
@@ -114,12 +118,15 @@ class VoltixSession:
 
     def _handle_login(self, raw_frame: RawFrame) -> bytes:
         if not raw_frame.crc_ok:
+            VOLTIX_CRC_ERRORS_TOTAL.inc()
+            VOLTIX_FRAMES_TOTAL.labels(result="error").inc()
             self._closed = True
             return build_ack(ACK_ERROR)
 
         try:
             message = decode_message(raw_frame)
         except (UnknownCommandError, MalformedMessageError):
+            VOLTIX_FRAMES_TOTAL.labels(result="error").inc()
             self._closed = True
             return build_ack(ACK_ERROR)
 
@@ -127,13 +134,16 @@ class VoltixSession:
             not isinstance(message, LoginMessage)
             or message.cabinet_id not in self._allowed_cabinet_ids
         ):
+            VOLTIX_FRAMES_TOTAL.labels(result="error").inc()
             self._closed = True
             return build_ack(ACK_ERROR)
 
         self._cabinet_id = message.cabinet_id
+        VOLTIX_FRAMES_TOTAL.labels(result="ok").inc()
         return build_ack(ACK_OK)
 
     def _reject_frame(self) -> bytes:
+        VOLTIX_FRAMES_TOTAL.labels(result="error").inc()
         self._invalid_frame_count += 1
         if self._invalid_frame_count >= self._max_invalid_frames:
             self._closed = True
