@@ -5,6 +5,7 @@ seulement la forme attendue. Les implémentations réelles vivent dans
 `adapters/persistence/` (phase 4).
 """
 
+from types import TracebackType
 from typing import Protocol
 
 from fanga_ingest.domain.battery import Battery
@@ -73,5 +74,12 @@ class UnitOfWork(Protocol):
     inventory: InventoryRegistry
 
     async def __aenter__(self) -> "UnitOfWork": ...
-    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None: ...
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None: ...
+
     async def commit(self) -> None: ...

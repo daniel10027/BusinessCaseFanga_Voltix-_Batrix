@@ -25,6 +25,13 @@ from fanga_ingest.adapters.persistence.tables import (
     observations,
     outbox,
 )
+from fanga_ingest.application.ports import (
+    BatteryRepository,
+    CabinetRepository,
+    InventoryRegistry,
+    ObservationStore,
+    OutboxWriter,
+)
 from fanga_ingest.domain.battery import Battery
 from fanga_ingest.domain.cabinet import Cabinet
 from fanga_ingest.domain.events import DomainEvent
@@ -173,11 +180,14 @@ class PostgresUnitOfWork:
     async def __aenter__(self) -> "PostgresUnitOfWork":
         self._session = self._session_factory()
         self._committed = False
-        self.batteries = PostgresBatteryRepository(self._session)
-        self.cabinets = PostgresCabinetRepository(self._session)
-        self.observations = PostgresObservationStore(self._session)
-        self.outbox = PostgresOutboxWriter(self._session)
-        self.inventory = PostgresInventoryRegistry(self._session)
+        # Annotés avec le type du port (pas la classe concrète) : mypy
+        # vérifie l'invariance des attributs mutables d'un Protocol par
+        # rapport au type déclaré de l'attribut, pas par structure.
+        self.batteries: BatteryRepository = PostgresBatteryRepository(self._session)
+        self.cabinets: CabinetRepository = PostgresCabinetRepository(self._session)
+        self.observations: ObservationStore = PostgresObservationStore(self._session)
+        self.outbox: OutboxWriter = PostgresOutboxWriter(self._session)
+        self.inventory: InventoryRegistry = PostgresInventoryRegistry(self._session)
         return self
 
     async def __aexit__(

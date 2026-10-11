@@ -85,6 +85,8 @@ source_modules = ["fanga_ingest.domain"]
 forbidden_modules = [
     "fanga_ingest.application",
     "fanga_ingest.adapters",
+    "fanga_ingest.main",
+    "fanga_ingest.config",
 ]
 
 [[tool.importlinter.contracts]]
@@ -93,12 +95,15 @@ type = "forbidden"
 source_modules = ["fanga_ingest.application"]
 forbidden_modules = [
     "fanga_ingest.adapters",
+    "fanga_ingest.main",
+    "fanga_ingest.config",
 ]
 
 [[tool.importlinter.contracts]]
-name = "Couches de haut niveau : adapters -> application -> domain"
+name = "Couches de haut niveau : main -> adapters -> application -> domain"
 type = "layers"
 layers = [
+    "fanga_ingest.main",
     "fanga_ingest.adapters",
     "fanga_ingest.application",
     "fanga_ingest.domain",
