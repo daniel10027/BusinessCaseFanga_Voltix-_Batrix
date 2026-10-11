@@ -1,0 +1,152 @@
+"""Agrégat Cabinet : les 8 casiers d'un cabinet Voltix et leur dernière valeur connue.
+
+Politique de vérité (brief, 5.3) : seul le cabinet rapporte l'état des
+casiers, donc pas de compétition entre sources ici — la mesure la plus
+récente (`observed_at`) gagne, par casier. Un casier jamais signalé reste à
+`None` (« unknown », jamais « vide » par défaut, cf. 5.11).
+
+Un SWAP_EVENT met le casier de dépôt en `OCCUPIED` (on sait qu'une batterie
+est là, mais pas encore dans quel état précis) et le casier de retrait en
+`EMPTY`. Un swap partiel (casier 0) ne touche pas ce côté-là.
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+from fanga_ingest.domain.events import (
+    BatterySwapped,
+    CabinetOffline,
+    CabinetOnline,
+    DomainEvent,
+    new_event_id,
+)
+from fanga_ingest.domain.observations import SlotObserved, SlotState, SwapObserved
+
+SLOT_NUMBERS = range(1, 9)
+
+
+@dataclass(frozen=True)
+class Slot:
+    state: SlotState | None = None
+    battery_serial: str | None = None
+    observed_at: datetime | None = None
+
+
+@dataclass
+class Cabinet:
+    cabinet_id: str
+    slots: dict[int, Slot] = field(default_factory=lambda: {n: Slot() for n in SLOT_NUMBERS})
+    last_seen_at: datetime | None = None
+    online: bool = True
+
+    def apply_slot_observed(self, obs: SlotObserved) -> list[DomainEvent]:
+        events = self._touch(obs.received_at)
+        if not self._is_newer(obs.slot_number, obs.observed_at):
+            return events
+        self.slots[obs.slot_number] = Slot(
+            state=obs.state,
+            battery_serial=obs.battery_serial,
+            observed_at=obs.observed_at,
+        )
+        return events
+
+    def apply_swap_observed(self, obs: SwapObserved) -> list[DomainEvent]:
+        events = self._touch(obs.received_at)
+
+        if obs.deposit_slot != 0 and self._is_newer(obs.deposit_slot, obs.observed_at):
+            self.slots[obs.deposit_slot] = Slot(
+                state=SlotState.OCCUPIED,
+                battery_serial=obs.deposited_battery_serial,
+                observed_at=obs.observed_at,
+            )
+
+        if obs.withdrawal_slot != 0 and self._is_newer(obs.withdrawal_slot, obs.observed_at):
+            self.slots[obs.withdrawal_slot] = Slot(
+                state=SlotState.EMPTY,
+                battery_serial=None,
+                observed_at=obs.observed_at,
+            )
+
+        events.append(
+            BatterySwapped(
+                event_id=new_event_id(),
+                occurred_at=obs.received_at,
+                cabinet_id=obs.cabinet_id,
+                deposit_slot=obs.deposit_slot,
+                withdrawal_slot=obs.withdrawal_slot,
+                deposited_battery_serial=obs.deposited_battery_serial,
+                withdrawn_battery_serial=obs.withdrawn_battery_serial,
+                received_at=obs.received_at,
+            )
+        )
+        return events
+
+    def _touch(self, received_at: datetime) -> list[DomainEvent]:
+        """Toute trame, HEARTBEAT compris, prouve que le cabinet est en vie
+        (brief, 5.10). Un cabinet qui reparle après avoir été déclaré hors
+        ligne redevient en ligne, avec un seul événement."""
+        self.last_seen_at = received_at
+        if self.online:
+            return []
+        self.online = True
+        return [
+            CabinetOnline(
+                event_id=new_event_id(), occurred_at=received_at, cabinet_id=self.cabinet_id
+            )
+        ]
+
+    def mark_offline(self, occurred_at: datetime) -> list[DomainEvent]:
+        """Appelé par la supervision périodique quand plus aucune trame n'est
+        arrivée depuis `CABINET_OFFLINE_AFTER` (brief, 5.10)."""
+        if not self.online:
+            return []
+        self.online = False
+        return [
+            CabinetOffline(
+                event_id=new_event_id(), occurred_at=occurred_at, cabinet_id=self.cabinet_id
+            )
+        ]
+
+    def _is_newer(self, slot_number: int, observed_at: datetime) -> bool:
+        current = self.slots.get(slot_number, Slot())
+        return current.observed_at is None or observed_at >= current.observed_at
+
+    def to_state(self) -> dict[str, Any]:
+        """Instantané complet, pour la persistance (types simples uniquement)."""
+        return {
+            "cabinet_id": self.cabinet_id,
+            "online": self.online,
+            "last_seen_at": self.last_seen_at.isoformat()
+            if self.last_seen_at is not None
+            else None,
+            "slots": {
+                str(number): {
+                    "state": slot.state.value if slot.state is not None else None,
+                    "battery_serial": slot.battery_serial,
+                    "observed_at": slot.observed_at.isoformat()
+                    if slot.observed_at is not None
+                    else None,
+                }
+                for number, slot in self.slots.items()
+            },
+        }
+
+    @classmethod
+    def from_state(cls, state: dict[str, Any]) -> "Cabinet":
+        last_seen_at = state["last_seen_at"]
+        cabinet = cls(
+            cabinet_id=state["cabinet_id"],
+            online=state["online"],
+            last_seen_at=datetime.fromisoformat(last_seen_at) if last_seen_at is not None else None,
+        )
+        for number_str, slot_data in state["slots"].items():
+            observed_at = slot_data["observed_at"]
+            cabinet.slots[int(number_str)] = Slot(
+                state=SlotState(slot_data["state"]) if slot_data["state"] is not None else None,
+                battery_serial=slot_data["battery_serial"],
+                observed_at=datetime.fromisoformat(observed_at)
+                if observed_at is not None
+                else None,
+            )
+        return cabinet
