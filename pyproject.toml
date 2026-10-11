@@ -43,6 +43,11 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "N"]
 
+[tool.ruff.lint.per-file-ignores]
+# B008 : `Depends(...)` en valeur par défaut est l'idiome voulu par FastAPI,
+# pas un appel de fonction accidentel.
+"src/fanga_ingest/adapters/api/*.py" = ["B008"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = false
@@ -80,6 +85,8 @@ source_modules = ["fanga_ingest.domain"]
 forbidden_modules = [
     "fanga_ingest.application",
     "fanga_ingest.adapters",
+    "fanga_ingest.main",
+    "fanga_ingest.config",
 ]
 
 [[tool.importlinter.contracts]]
@@ -88,12 +95,15 @@ type = "forbidden"
 source_modules = ["fanga_ingest.application"]
 forbidden_modules = [
     "fanga_ingest.adapters",
+    "fanga_ingest.main",
+    "fanga_ingest.config",
 ]
 
 [[tool.importlinter.contracts]]
-name = "Couches de haut niveau : adapters -> application -> domain"
+name = "Couches de haut niveau : main -> adapters -> application -> domain"
 type = "layers"
 layers = [
+    "fanga_ingest.main",
     "fanga_ingest.adapters",
     "fanga_ingest.application",
     "fanga_ingest.domain",
