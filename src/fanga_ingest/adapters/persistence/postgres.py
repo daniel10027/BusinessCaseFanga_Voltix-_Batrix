@@ -100,6 +100,10 @@ class PostgresCabinetRepository:
         )
         await self._session.execute(stmt)
 
+    async def list_all(self) -> list[Cabinet]:
+        result = await self._session.execute(select(cabinets.c.state))
+        return [Cabinet.from_state(row[0]) for row in result.all()]
+
 
 class PostgresObservationStore:
     def __init__(self, session: AsyncSession) -> None:

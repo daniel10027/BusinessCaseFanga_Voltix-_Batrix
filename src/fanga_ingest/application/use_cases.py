@@ -14,7 +14,7 @@ désérialise une nouvelle instance à chaque appel : muter l'objet en mémoire
 n'a aucun effet sur la base tant que `save()` n'a pas été appelé.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fanga_ingest.application.ports import UnitOfWork
@@ -106,6 +106,22 @@ async def sync_inventory_registration(
 
         await uow.batteries.save(battery)
         await uow.inventory.set_status(serial, action)
+        await uow.commit()
+
+
+async def detect_offline_cabinets(uow: UnitOfWork, now: datetime, offline_after: timedelta) -> None:
+    """Un passage de la supervision périodique (brief, 5.10) : tout cabinet en
+    ligne resté silencieux plus de `offline_after` est déclaré hors ligne."""
+    async with uow:
+        for cabinet in await uow.cabinets.list_all():
+            if (
+                cabinet.online
+                and cabinet.last_seen_at is not None
+                and now - cabinet.last_seen_at > offline_after
+            ):
+                events = cabinet.mark_offline(now)
+                await uow.cabinets.save(cabinet)
+                await _publish_all(uow, events)
         await uow.commit()
 
 

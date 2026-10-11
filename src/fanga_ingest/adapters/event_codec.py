@@ -13,6 +13,8 @@ from fanga_ingest.domain.events import (
     BatterySocDiscrepancy,
     BatterySwapped,
     BatteryUnknownDetected,
+    CabinetOffline,
+    CabinetOnline,
     DomainEvent,
 )
 
@@ -21,6 +23,8 @@ _EVENT_TYPES: dict[type[DomainEvent], str] = {
     BatteryFaulted: "battery.faulted",
     BatteryUnknownDetected: "battery.unknown_detected",
     BatterySocDiscrepancy: "battery.soc_discrepancy",
+    CabinetOffline: "cabinet.offline",
+    CabinetOnline: "cabinet.online",
 }
 
 
@@ -48,6 +52,8 @@ def event_payload(event: DomainEvent) -> dict[str, Any]:
             "cabinet_soc_pct": event.cabinet_soc_pct,
             "bms_soc_pct": event.bms_soc_pct,
         }
+    if isinstance(event, CabinetOffline | CabinetOnline):
+        return {"cabinet_id": event.cabinet_id}
     raise TypeError(f"type d'événement non géré : {type(event)!r}")
 
 

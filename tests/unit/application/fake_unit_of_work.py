@@ -49,6 +49,9 @@ class FakeCabinetRepository:
     async def save(self, cabinet: Cabinet) -> None:
         self._states[cabinet.cabinet_id] = cabinet.to_state()
 
+    async def list_all(self) -> list[Cabinet]:
+        return [Cabinet.from_state(state) for state in self._states.values()]
+
     @property
     def store(self) -> dict[str, Cabinet]:
         return {cid: Cabinet.from_state(state) for cid, state in self._states.items()}

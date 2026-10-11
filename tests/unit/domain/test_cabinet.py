@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from fanga_ingest.domain.cabinet import Cabinet
-from fanga_ingest.domain.events import BatterySwapped
+from fanga_ingest.domain.events import BatterySwapped, CabinetOffline, CabinetOnline
 from fanga_ingest.domain.observations import SlotObserved, SlotState, SwapObserved
 from fanga_ingest.domain.value_objects import Source
 
@@ -124,3 +124,41 @@ def test_any_frame_updates_last_seen_at() -> None:
     cabinet.apply_slot_observed(_slot_observed(received_at=_T0))
 
     assert cabinet.last_seen_at == _T0
+
+
+def test_mark_offline_flips_the_flag_and_emits_one_event() -> None:
+    cabinet = Cabinet(cabinet_id="VTX-CAB-0042")
+
+    events = cabinet.mark_offline(_T0)
+
+    assert cabinet.online is False
+    assert len(events) == 1
+    assert isinstance(events[0], CabinetOffline)
+    assert events[0].cabinet_id == "VTX-CAB-0042"
+
+
+def test_mark_offline_is_idempotent() -> None:
+    cabinet = Cabinet(cabinet_id="VTX-CAB-0042")
+    cabinet.mark_offline(_T0)
+
+    events = cabinet.mark_offline(_T0 + timedelta(seconds=1))
+
+    assert events == []
+
+
+def test_frame_from_an_offline_cabinet_brings_it_back_online() -> None:
+    cabinet = Cabinet(cabinet_id="VTX-CAB-0042")
+    cabinet.mark_offline(_T0)
+
+    events = cabinet.apply_slot_observed(_slot_observed(received_at=_T0 + timedelta(minutes=5)))
+
+    assert cabinet.online is True
+    assert any(isinstance(e, CabinetOnline) for e in events)
+
+
+def test_frame_from_an_already_online_cabinet_does_not_reemit_online() -> None:
+    cabinet = Cabinet(cabinet_id="VTX-CAB-0042")
+
+    events = cabinet.apply_slot_observed(_slot_observed())
+
+    assert not any(isinstance(e, CabinetOnline) for e in events)

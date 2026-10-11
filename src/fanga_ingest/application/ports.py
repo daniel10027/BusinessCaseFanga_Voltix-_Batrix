@@ -27,6 +27,11 @@ class CabinetRepository(Protocol):
     async def get(self, cabinet_id: str) -> Cabinet | None: ...
     async def save(self, cabinet: Cabinet) -> None: ...
 
+    async def list_all(self) -> list[Cabinet]:
+        """Pour la supervision périodique (brief, 5.10) : balayer tous les
+        cabinets connus pour détecter ceux devenus silencieux."""
+        ...
+
 
 class ObservationStore(Protocol):
     """Enregistre une observation brute.

@@ -14,7 +14,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from fanga_ingest.domain.events import BatterySwapped, DomainEvent, new_event_id
+from fanga_ingest.domain.events import (
+    BatterySwapped,
+    CabinetOffline,
+    CabinetOnline,
+    DomainEvent,
+    new_event_id,
+)
 from fanga_ingest.domain.observations import SlotObserved, SlotState, SwapObserved
 
 SLOT_NUMBERS = range(1, 9)
@@ -35,18 +41,18 @@ class Cabinet:
     online: bool = True
 
     def apply_slot_observed(self, obs: SlotObserved) -> list[DomainEvent]:
-        self.last_seen_at = obs.received_at
+        events = self._touch(obs.received_at)
         if not self._is_newer(obs.slot_number, obs.observed_at):
-            return []
+            return events
         self.slots[obs.slot_number] = Slot(
             state=obs.state,
             battery_serial=obs.battery_serial,
             observed_at=obs.observed_at,
         )
-        return []
+        return events
 
     def apply_swap_observed(self, obs: SwapObserved) -> list[DomainEvent]:
-        self.last_seen_at = obs.received_at
+        events = self._touch(obs.received_at)
 
         if obs.deposit_slot != 0 and self._is_newer(obs.deposit_slot, obs.observed_at):
             self.slots[obs.deposit_slot] = Slot(
@@ -62,7 +68,7 @@ class Cabinet:
                 observed_at=obs.observed_at,
             )
 
-        return [
+        events.append(
             BatterySwapped(
                 event_id=new_event_id(),
                 occurred_at=obs.received_at,
@@ -72,6 +78,33 @@ class Cabinet:
                 deposited_battery_serial=obs.deposited_battery_serial,
                 withdrawn_battery_serial=obs.withdrawn_battery_serial,
                 received_at=obs.received_at,
+            )
+        )
+        return events
+
+    def _touch(self, received_at: datetime) -> list[DomainEvent]:
+        """Toute trame, HEARTBEAT compris, prouve que le cabinet est en vie
+        (brief, 5.10). Un cabinet qui reparle après avoir été déclaré hors
+        ligne redevient en ligne, avec un seul événement."""
+        self.last_seen_at = received_at
+        if self.online:
+            return []
+        self.online = True
+        return [
+            CabinetOnline(
+                event_id=new_event_id(), occurred_at=received_at, cabinet_id=self.cabinet_id
+            )
+        ]
+
+    def mark_offline(self, occurred_at: datetime) -> list[DomainEvent]:
+        """Appelé par la supervision périodique quand plus aucune trame n'est
+        arrivée depuis `CABINET_OFFLINE_AFTER` (brief, 5.10)."""
+        if not self.online:
+            return []
+        self.online = False
+        return [
+            CabinetOffline(
+                event_id=new_event_id(), occurred_at=occurred_at, cabinet_id=self.cabinet_id
             )
         ]
 

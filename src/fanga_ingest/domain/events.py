@@ -43,5 +43,15 @@ class BatterySocDiscrepancy(DomainEvent):
     bms_soc_pct: float
 
 
+@dataclass(frozen=True)
+class CabinetOffline(DomainEvent):
+    cabinet_id: str
+
+
+@dataclass(frozen=True)
+class CabinetOnline(DomainEvent):
+    cabinet_id: str
+
+
 def new_event_id() -> UUID:
     return uuid4()
