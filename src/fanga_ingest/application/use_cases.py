@@ -2,11 +2,16 @@
 
 Chacun suit le même schéma : enregistrer l'observation brute (dédupliquée par
 la persistance), charger ou créer les agrégats concernés, leur appliquer
-l'observation, publier les événements produits dans l'outbox, valider la
-transaction. Rien ici ne connaît FastAPI, SQLAlchemy ou aiomqtt : seulement
-les ports de `application.ports`. C'est ce qui permet d'ajouter un nouveau
-fournisseur sans toucher à ce fichier : il lui suffit de produire les mêmes
-observations canoniques.
+l'observation, les sauvegarder, publier les événements produits dans
+l'outbox, valider la transaction. Rien ici ne connaît FastAPI, SQLAlchemy ou
+aiomqtt : seulement les ports de `application.ports`. C'est ce qui permet
+d'ajouter un nouveau fournisseur sans toucher à ce fichier : il lui suffit de
+produire les mêmes observations canoniques.
+
+Important : `save()` est toujours appelé après avoir muté un agrégat, qu'il
+soit nouveau ou déjà existant. Avec un vrai dépôt (PostgreSQL), `get()`
+désérialise une nouvelle instance à chaque appel : muter l'objet en mémoire
+n'a aucun effet sur la base tant que `save()` n'a pas été appelé.
 """
 
 from datetime import datetime
@@ -24,11 +29,15 @@ async def ingest_slot_observed(uow: UnitOfWork, obs: SlotObserved) -> None:
             return  # doublon : aucun effet (5.3)
 
         cabinet = await _get_or_create_cabinet(uow, obs.cabinet_id)
-        await _publish_all(uow, cabinet.apply_slot_observed(obs))
+        events = cabinet.apply_slot_observed(obs)
+        await uow.cabinets.save(cabinet)
+        await _publish_all(uow, events)
 
         if obs.battery_serial is not None:
             battery = await _get_or_create_battery(uow, obs.battery_serial, obs.received_at)
-            await _publish_all(uow, battery.apply_slot_observed(obs))
+            events = battery.apply_slot_observed(obs)
+            await uow.batteries.save(battery)
+            await _publish_all(uow, events)
 
         await uow.commit()
 
@@ -39,19 +48,23 @@ async def ingest_swap_observed(uow: UnitOfWork, obs: SwapObserved) -> None:
             return
 
         cabinet = await _get_or_create_cabinet(uow, obs.cabinet_id)
-        await _publish_all(uow, cabinet.apply_swap_observed(obs))
+        events = cabinet.apply_swap_observed(obs)
+        await uow.cabinets.save(cabinet)
+        await _publish_all(uow, events)
 
         if obs.deposited_battery_serial is not None:
             deposited = await _get_or_create_battery(
                 uow, obs.deposited_battery_serial, obs.received_at
             )
             deposited.apply_swap_as_deposit(obs)
+            await uow.batteries.save(deposited)
 
         if obs.withdrawn_battery_serial is not None:
             withdrawn = await _get_or_create_battery(
                 uow, obs.withdrawn_battery_serial, obs.received_at
             )
             withdrawn.apply_swap_as_withdrawal(obs)
+            await uow.batteries.save(withdrawn)
 
         await uow.commit()
 
@@ -62,7 +75,9 @@ async def ingest_telemetry_observed(uow: UnitOfWork, obs: TelemetryObserved) -> 
             return
 
         battery = await _get_or_create_battery(uow, obs.battery_serial, obs.received_at)
-        await _publish_all(uow, battery.apply_telemetry_observed(obs))
+        events = battery.apply_telemetry_observed(obs)
+        await uow.batteries.save(battery)
+        await _publish_all(uow, events)
 
         await uow.commit()
 
@@ -71,9 +86,7 @@ async def _get_or_create_cabinet(uow: UnitOfWork, cabinet_id: str) -> Cabinet:
     cabinet = await uow.cabinets.get(cabinet_id)
     if cabinet is not None:
         return cabinet
-    cabinet = Cabinet(cabinet_id=cabinet_id)
-    await uow.cabinets.add(cabinet)
-    return cabinet
+    return Cabinet(cabinet_id=cabinet_id)
 
 
 async def _get_or_create_battery(uow: UnitOfWork, serial: str, received_at: datetime) -> Battery:
@@ -83,7 +96,6 @@ async def _get_or_create_battery(uow: UnitOfWork, serial: str, received_at: date
 
     in_inventory = await uow.inventory.contains(serial)
     battery = Battery(serial=serial, in_inventory=in_inventory)
-    await uow.batteries.add(battery)
     if not in_inventory:
         await uow.outbox.publish(
             BatteryUnknownDetected(

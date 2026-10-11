@@ -1,11 +1,19 @@
 """Unité de travail en mémoire, utilisée uniquement par les tests unitaires.
 
-Ce n'est pas l'adaptateur de persistance réel (celui-ci viendra avec
-PostgreSQL en phase 4) : juste assez pour exercer les cas d'usage sans réseau
-ni base de données, en respectant la forme attendue par `application.ports`.
+Ce n'est pas l'adaptateur de persistance réel (celui-ci vit dans
+`adapters/persistence/`, branché sur PostgreSQL) : juste assez pour exercer
+les cas d'usage sans réseau ni base de données, en respectant la forme
+attendue par `application.ports`.
+
+`get()` et `save()` passent par `to_state()`/`from_state()` plutôt que de
+stocker directement la référence Python : c'est ce qui simule fidèlement la
+frontière de (dé)sérialisation d'un vrai dépôt, et qui aurait détecté le bug
+« batterie mutée en mémoire mais jamais sauvegardée » dès les tests
+unitaires, sans attendre une vraie base.
 """
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from fanga_ingest.domain.battery import Battery
 from fanga_ingest.domain.cabinet import Cabinet
@@ -15,24 +23,35 @@ from fanga_ingest.domain.observations import SlotObserved, SwapObserved, Telemet
 
 @dataclass
 class FakeBatteryRepository:
-    store: dict[str, Battery] = field(default_factory=dict)
+    _states: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     async def get(self, serial: str) -> Battery | None:
-        return self.store.get(serial)
+        state = self._states.get(serial)
+        return Battery.from_state(state) if state is not None else None
 
-    async def add(self, battery: Battery) -> None:
-        self.store[battery.serial] = battery
+    async def save(self, battery: Battery) -> None:
+        self._states[battery.serial] = battery.to_state()
+
+    @property
+    def store(self) -> dict[str, Battery]:
+        """Pour les assertions de test : un aperçu désérialisé de chaque batterie."""
+        return {serial: Battery.from_state(state) for serial, state in self._states.items()}
 
 
 @dataclass
 class FakeCabinetRepository:
-    store: dict[str, Cabinet] = field(default_factory=dict)
+    _states: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     async def get(self, cabinet_id: str) -> Cabinet | None:
-        return self.store.get(cabinet_id)
+        state = self._states.get(cabinet_id)
+        return Cabinet.from_state(state) if state is not None else None
 
-    async def add(self, cabinet: Cabinet) -> None:
-        self.store[cabinet.cabinet_id] = cabinet
+    async def save(self, cabinet: Cabinet) -> None:
+        self._states[cabinet.cabinet_id] = cabinet.to_state()
+
+    @property
+    def store(self) -> dict[str, Cabinet]:
+        return {cid: Cabinet.from_state(state) for cid, state in self._states.items()}
 
 
 @dataclass

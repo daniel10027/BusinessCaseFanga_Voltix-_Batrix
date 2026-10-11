@@ -15,12 +15,17 @@ from fanga_ingest.domain.observations import SlotObserved, SwapObserved, Telemet
 
 class BatteryRepository(Protocol):
     async def get(self, serial: str) -> Battery | None: ...
-    async def add(self, battery: Battery) -> None: ...
+
+    async def save(self, battery: Battery) -> None:
+        """Insère ou met à jour (upsert) : fonctionne pour un agrégat neuf
+        comme pour un agrégat déjà existant, puisque `get()` renvoie une
+        instance désérialisée indépendante de celle persistée."""
+        ...
 
 
 class CabinetRepository(Protocol):
     async def get(self, cabinet_id: str) -> Cabinet | None: ...
-    async def add(self, cabinet: Cabinet) -> None: ...
+    async def save(self, cabinet: Cabinet) -> None: ...
 
 
 class ObservationStore(Protocol):
