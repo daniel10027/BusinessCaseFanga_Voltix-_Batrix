@@ -83,11 +83,17 @@ class FakeOutboxWriter:
 
 
 @dataclass
-class FakeKnownInventory:
-    known_serials: frozenset[str] = frozenset()
+class FakeInventoryRegistry:
+    known_serials: set[str] = field(default_factory=set)
 
     async def contains(self, serial: str) -> bool:
         return serial in self.known_serials
+
+    async def set_status(self, serial: str, status: str) -> None:
+        if status == "registered":
+            self.known_serials.add(serial)
+        else:
+            self.known_serials.discard(serial)
 
 
 class FakeUnitOfWork:
@@ -96,7 +102,7 @@ class FakeUnitOfWork:
         self.cabinets = FakeCabinetRepository()
         self.observations = FakeObservationStore()
         self.outbox = FakeOutboxWriter()
-        self.inventory = FakeKnownInventory(known_serials)
+        self.inventory = FakeInventoryRegistry(set(known_serials))
         self.commits = 0
 
     async def __aenter__(self) -> "FakeUnitOfWork":

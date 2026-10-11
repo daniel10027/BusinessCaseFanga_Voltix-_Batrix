@@ -140,7 +140,7 @@ class PostgresOutboxWriter:
         await self._session.execute(stmt)
 
 
-class PostgresKnownInventory:
+class PostgresInventoryRegistry:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
@@ -150,6 +150,14 @@ class PostgresKnownInventory:
         )
         row = result.first()
         return row is not None and row[0] == "registered"
+
+    async def set_status(self, serial: str, status: str) -> None:
+        stmt = pg_insert(inventory).values(serial=serial, status=status, updated_at=func.now())
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[inventory.c.serial],
+            set_={"status": stmt.excluded.status, "updated_at": stmt.excluded.updated_at},
+        )
+        await self._session.execute(stmt)
 
 
 class PostgresUnitOfWork:
@@ -165,7 +173,7 @@ class PostgresUnitOfWork:
         self.cabinets = PostgresCabinetRepository(self._session)
         self.observations = PostgresObservationStore(self._session)
         self.outbox = PostgresOutboxWriter(self._session)
-        self.inventory = PostgresKnownInventory(self._session)
+        self.inventory = PostgresInventoryRegistry(self._session)
         return self
 
     async def __aexit__(

@@ -45,15 +45,16 @@ class OutboxWriter(Protocol):
     async def publish(self, event: DomainEvent) -> None: ...
 
 
-class KnownInventory(Protocol):
-    """Sait si un numéro de série est déjà connu de l'inventaire Fanga.
+class InventoryRegistry(Protocol):
+    """Sait quels numéros de série l'inventaire Fanga connaît, et les tient à jour.
 
-    Pour la démo, une liste statique suffit (5.9). Brancher ce port sur l'API
-    métier réelle ou une réconciliation nocturne reste à faire (section « avec
-    plus de temps »).
+    `contains()` sert à décider si une batterie jamais vue est mise en
+    quarantaine ou non. `set_status()` est appelé quand l'API métier (via
+    NestJS) confirme un enregistrement ou un retrait (brief, 5.9).
     """
 
     async def contains(self, serial: str) -> bool: ...
+    async def set_status(self, serial: str, status: str) -> None: ...
 
 
 class UnitOfWork(Protocol):
@@ -64,7 +65,7 @@ class UnitOfWork(Protocol):
     cabinets: CabinetRepository
     observations: ObservationStore
     outbox: OutboxWriter
-    inventory: KnownInventory
+    inventory: InventoryRegistry
 
     async def __aenter__(self) -> "UnitOfWork": ...
     async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None: ...

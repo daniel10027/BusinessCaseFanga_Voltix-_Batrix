@@ -63,6 +63,7 @@ class Battery:
 
     serial: str
     in_inventory: bool = True
+    retired: bool = False
 
     location: Sourced[Location] | None = None
     soc_pct: Sourced[float] | None = None
@@ -163,6 +164,15 @@ class Battery:
         events += self._check_soc_discrepancy(obs.received_at)
         return events
 
+    def mark_registered(self) -> None:
+        """L'API métier (via NestJS) confirme cette batterie : la quarantaine
+        est levée, tout l'historique déjà observé est conservé (brief, 5.9)."""
+        self.in_inventory = True
+
+    def mark_retired(self) -> None:
+        """L'API métier retire cette batterie du service (brief, 5.9)."""
+        self.retired = True
+
     def _recompute_faulted(self, occurred_at: datetime) -> list[DomainEvent]:
         was_faulted = self.faulted
         self.faulted = self._cabinet_faulted or self._bms_faulted
@@ -219,6 +229,7 @@ class Battery:
         return {
             "serial": self.serial,
             "in_inventory": self.in_inventory,
+            "retired": self.retired,
             "faulted": self.faulted,
             "location": _sourced_to_state(self.location, _location_to_state),
             "soc_pct": _sourced_to_state(self.soc_pct, lambda v: v),
@@ -245,6 +256,7 @@ class Battery:
     @classmethod
     def from_state(cls, state: dict[str, Any]) -> "Battery":
         battery = cls(serial=state["serial"], in_inventory=state["in_inventory"])
+        battery.retired = state["retired"]
         battery.faulted = state["faulted"]
         battery.location = _sourced_from_state(state["location"], _location_from_state)
         battery.soc_pct = _sourced_from_state(state["soc_pct"], float)

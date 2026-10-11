@@ -15,12 +15,15 @@ n'a aucun effet sur la base tant que `save()` n'a pas été appelé.
 """
 
 from datetime import datetime
+from typing import Literal
 
 from fanga_ingest.application.ports import UnitOfWork
 from fanga_ingest.domain.battery import Battery
 from fanga_ingest.domain.cabinet import Cabinet
 from fanga_ingest.domain.events import BatteryUnknownDetected, DomainEvent, new_event_id
 from fanga_ingest.domain.observations import SlotObserved, SwapObserved, TelemetryObserved
+
+InventoryAction = Literal["registered", "retired"]
 
 
 async def ingest_slot_observed(uow: UnitOfWork, obs: SlotObserved) -> None:
@@ -79,6 +82,30 @@ async def ingest_telemetry_observed(uow: UnitOfWork, obs: TelemetryObserved) -> 
         await uow.batteries.save(battery)
         await _publish_all(uow, events)
 
+        await uow.commit()
+
+
+async def sync_inventory_registration(
+    uow: UnitOfWork, serial: str, action: InventoryAction
+) -> None:
+    """L'API métier (via NestJS) confirme ou retire une batterie (brief, 5.9).
+
+    Fonctionne même si la batterie n'a jamais produit la moindre observation :
+    c'est ainsi qu'une batterie peut être enregistrée avant sa première
+    utilisation.
+    """
+    async with uow:
+        battery = await uow.batteries.get(serial)
+        if battery is None:
+            battery = Battery(serial=serial, in_inventory=False)
+
+        if action == "registered":
+            battery.mark_registered()
+        else:
+            battery.mark_retired()
+
+        await uow.batteries.save(battery)
+        await uow.inventory.set_status(serial, action)
         await uow.commit()
 
 

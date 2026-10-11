@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from fanga_ingest.adapters.persistence.postgres import (
     PostgresBatteryRepository,
     PostgresCabinetRepository,
-    PostgresKnownInventory,
+    PostgresInventoryRegistry,
     PostgresObservationStore,
     PostgresOutboxWriter,
 )
@@ -186,6 +186,26 @@ async def test_known_inventory_reflects_registered_status(
         await session.commit()
 
     async with session_factory() as session:
-        known = PostgresKnownInventory(session)
+        known = PostgresInventoryRegistry(session)
         assert await known.contains("BT004817") is True
         assert await known.contains("BT009999") is False
+
+
+async def test_inventory_registry_set_status_upserts(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with session_factory() as session:
+        registry = PostgresInventoryRegistry(session)
+        await registry.set_status("BT009999", "registered")
+        await session.commit()
+
+    async with session_factory() as session:
+        assert await PostgresInventoryRegistry(session).contains("BT009999") is True
+
+    async with session_factory() as session:
+        registry = PostgresInventoryRegistry(session)
+        await registry.set_status("BT009999", "retired")
+        await session.commit()
+
+    async with session_factory() as session:
+        assert await PostgresInventoryRegistry(session).contains("BT009999") is False
