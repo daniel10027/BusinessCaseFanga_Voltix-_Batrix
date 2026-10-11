@@ -76,3 +76,22 @@ jobs:
         with:
           context: .
           push: false
+
+  # Module bonus (livrable 4, facultatif) : indépendant du service Python,
+  # son propre job pour ne pas ralentir ni faire échouer le reste de la CI
+  # si on y touche.
+  nestjs-swap:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nestjs-swap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: nestjs-swap/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
