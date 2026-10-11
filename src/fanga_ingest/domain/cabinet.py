@@ -12,6 +12,7 @@ est là, mais pas encore dans quel état précis) et le casier de retrait en
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from fanga_ingest.domain.events import BatterySwapped, DomainEvent, new_event_id
 from fanga_ingest.domain.observations import SlotObserved, SlotState, SwapObserved
@@ -77,3 +78,42 @@ class Cabinet:
     def _is_newer(self, slot_number: int, observed_at: datetime) -> bool:
         current = self.slots.get(slot_number, Slot())
         return current.observed_at is None or observed_at >= current.observed_at
+
+    def to_state(self) -> dict[str, Any]:
+        """Instantané complet, pour la persistance (types simples uniquement)."""
+        return {
+            "cabinet_id": self.cabinet_id,
+            "online": self.online,
+            "last_seen_at": self.last_seen_at.isoformat()
+            if self.last_seen_at is not None
+            else None,
+            "slots": {
+                str(number): {
+                    "state": slot.state.value if slot.state is not None else None,
+                    "battery_serial": slot.battery_serial,
+                    "observed_at": slot.observed_at.isoformat()
+                    if slot.observed_at is not None
+                    else None,
+                }
+                for number, slot in self.slots.items()
+            },
+        }
+
+    @classmethod
+    def from_state(cls, state: dict[str, Any]) -> "Cabinet":
+        last_seen_at = state["last_seen_at"]
+        cabinet = cls(
+            cabinet_id=state["cabinet_id"],
+            online=state["online"],
+            last_seen_at=datetime.fromisoformat(last_seen_at) if last_seen_at is not None else None,
+        )
+        for number_str, slot_data in state["slots"].items():
+            observed_at = slot_data["observed_at"]
+            cabinet.slots[int(number_str)] = Slot(
+                state=SlotState(slot_data["state"]) if slot_data["state"] is not None else None,
+                battery_serial=slot_data["battery_serial"],
+                observed_at=datetime.fromisoformat(observed_at)
+                if observed_at is not None
+                else None,
+            )
+        return cabinet
