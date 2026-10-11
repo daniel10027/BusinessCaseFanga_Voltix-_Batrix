@@ -235,4 +235,9 @@ Hypothèses posées dans le code :
 
 ## Outils utilisés
 
-<!-- À compléter par Daniel -->
+- **Claude** (claude.ai) : recherches ponctuelles (notamment la vérification
+  des informations OCPP 2.1 auprès des sources officielles de l'Open
+  Charge Alliance pour `docs/architecture.md`) et travail sur la
+  spécification du projet.
+- **Claude Code** : implémentation — code, tests, infrastructure Docker,
+  CI/CD. Je peux expliquer chaque ligne du dépôt.

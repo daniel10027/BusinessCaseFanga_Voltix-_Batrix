@@ -42,11 +42,14 @@ jobs:
       - name: Déterminer le(s) tag(s) de l'image
         id: image_tags
         run: |
+          # Une référence d'image Docker doit être en minuscules : le nom du
+          # dépôt GitHub, lui, ne l'est pas forcément (ici "BusinessCase...").
+          IMAGE="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
           if [ "${{ github.ref_name }}" = "production" ]; then
             VERSION=$(git describe --tags --always)
-            echo "tags=ghcr.io/${{ github.repository }}:${VERSION},ghcr.io/${{ github.repository }}:latest" >> "$GITHUB_OUTPUT"
+            echo "tags=${IMAGE}:${VERSION},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
           else
-            echo "tags=ghcr.io/${{ github.repository }}:preprod-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "tags=${IMAGE}:preprod-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: docker/build-push-action@v6
