@@ -6,7 +6,7 @@ les secrets GitHub ou le `.env` local (jamais commité).
 
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +46,16 @@ class Settings(BaseSettings):
 
     # Laisser vide en production : l'horloge système est alors utilisée (clock.py).
     replay_start: datetime | None = Field(default=None, alias="REPLAY_START")
+
+    @field_validator("replay_start", mode="before")
+    @classmethod
+    def _blank_string_means_unset(cls, value: object) -> object:
+        # `docker compose` substitue ${REPLAY_START:-} par une chaîne vide
+        # quand la variable n'est pas définie sur l'hôte, pas par une absence
+        # de variable : il faut traiter "" comme None explicitement.
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
 
     @property
     def voltix_allowed_cabinet_ids_set(self) -> frozenset[str]:
