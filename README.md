@@ -240,4 +240,4 @@ Hypothèses posées dans le code :
   Charge Alliance pour `docs/architecture.md`) et travail sur la
   spécification du projet.
 - **Claude Code** : implémentation — code, tests, infrastructure Docker,
-  CI/CD. Je peux expliquer chaque ligne du dépôt.
+  CI/CD.
