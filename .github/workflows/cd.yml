@@ -65,8 +65,6 @@ jobs:
   deploy:
     needs: publish
     runs-on: ubuntu-latest
-    # Environnement GitHub "preprod" ou "production" : à configurer par Daniel
-    # (protection de branche + approbation manuelle requise en production).
     environment: ${{ github.ref_name }}
     steps:
       - name: "[SIMULATION] Déploiement sur le VPS — projet non hébergé"

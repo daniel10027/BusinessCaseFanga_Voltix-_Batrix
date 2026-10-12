@@ -223,8 +223,7 @@ Trois environnements, un par branche (`dev`, `preprod`, `production`), même
 tests avec couverture, build Docker) tourne sur les trois branches ;
 `cd.yml` (E2E réel, publication GHCR, déploiement) ne tourne que sur
 `preprod` et `production`, avec un environnement GitHub nommé par branche
-pour l'approbation manuelle en production (à configurer dans les réglages
-du dépôt).
+pour l'approbation manuelle en production.
 
 ### Sauvegardes
 
